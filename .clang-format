@@ -1,0 +1,29 @@
+BasedOnStyle: Google
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+BreakBeforeBraces: Attach
+
+SpaceBeforeParens: ControlStatements
+SpaceBeforeAssignmentOperators: true
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+ColumnLimit: 120
+
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+
+AccessModifierOffset: -4
+
+SortIncludes: CaseSensitive
+
+NamespaceIndentation: None
+
+MaxEmptyLinesToKeep: 1
