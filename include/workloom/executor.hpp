@@ -2,8 +2,11 @@
 
 namespace workloom {
 
-	inline int add(int a, int b) {
-		return a + b;
-	}
+class Executor {
+public:
+    explicit Executor(std::size_t thread_size);
+
+    ~Executor();
+};
 
 }
