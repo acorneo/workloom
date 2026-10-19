@@ -26,3 +26,9 @@ void workloom::Executor::wait_for_all() {
         }
     }
 }
+
+void workloom::Executor::enqueue(std::move_only_function<void()> task) {
+    std::lock_guard<std::mutex> lock(task_mutex);
+
+    tasks.push(std::move(task));
+}
