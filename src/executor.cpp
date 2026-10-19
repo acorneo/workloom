@@ -4,19 +4,27 @@
 
 workloom::Executor::Executor(std::size_t thread_size) {
     this->thread_size = thread_size;
-    threads.resize(thread_size);
+    threads.reserve(thread_size);
+    for (int i = 0; i < thread_size; i++) {
+        threads.emplace_back([this] {
+            worker_loop();
+        });
+    }
 }
 
 workloom::Executor::~Executor() {
-    threads.clear();
-}
-
-void workloom::Executor::start_manual_task(std::move_only_function<void()> task, int thread_idx) {
-    if (thread_idx < 0 || thread_idx >= thread_size) {
-        throw std::runtime_error("thread_idx incorrect");
+    {
+        std::lock_guard<std::mutex> lock(task_mutex);
+        stopping = true;
     }
 
-    threads[thread_idx] = std::thread(std::move(task));
+    task_cv.notify_all();
+
+    for (auto& thread : threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
 }
 
 void workloom::Executor::wait_for_all() {
@@ -28,7 +36,37 @@ void workloom::Executor::wait_for_all() {
 }
 
 void workloom::Executor::enqueue(std::move_only_function<void()> task) {
-    std::lock_guard<std::mutex> lock(task_mutex);
+    {
+        std::lock_guard<std::mutex> lock(task_mutex);
 
-    tasks.push(std::move(task));
+        if (stopping) {
+            throw std::runtime_error("Executor is stopping");
+        }
+
+        tasks.push(std::move(task));
+    }
+
+    task_cv.notify_one();
+}
+
+void workloom::Executor::worker_loop() {
+    while (true) {
+        std::move_only_function<void()> task;
+
+        {
+            std::unique_lock<std::mutex> lock(task_mutex);
+            task_cv.wait(lock, [this] {
+                return !tasks.empty() || stopping;
+            });
+
+            if (stopping && tasks.empty()) {
+                return;
+            }
+
+            task = std::move(tasks.front());
+            tasks.pop();
+        }
+
+        task();
+    }
 }
