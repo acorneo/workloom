@@ -27,3 +27,18 @@ TEST(ExecutorTest, SimpleThreadEndedCheck) {
 
     ASSERT_TRUE(executed);
 }
+
+TEST(ExecutorTest, MultipleTasks) {
+    auto ex = workloom::Executor(3);
+
+    std::atomic<int> counter = 0;
+    for (int i = 0; i < 3; i++) {
+        ex.start_manual_task([&counter]() {
+            ++counter;
+        }, i);
+    }
+
+    ex.wait_for_all();
+
+    ASSERT_EQ(counter, 3);
+}
