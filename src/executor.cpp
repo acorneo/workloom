@@ -3,6 +3,7 @@
 #include <workloom/executor.hpp>
 
 workloom::Executor::Executor(std::size_t thread_size) {
+    if (thread_size == 0) throw std::runtime_error("thread_size cannot be 0");
     this->thread_size = thread_size;
     threads.reserve(thread_size);
     for (int i = 0; i < thread_size; i++) {

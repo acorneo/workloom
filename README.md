@@ -78,7 +78,6 @@ The `workloom` target exposes its include directory. The consumer explicitly req
 ## Current limitations
 
 - **`wait_for_all()` cannot be used to wait for tasks.** It calls `join()` without setting the stop flag. With a nonzero worker count, it blocks indefinitely: after draining the queue, workers keep waiting for new tasks. With the current API, let the executor go out of scope as shown above.
-- The thread count is not validated. `Executor(0)` accepts tasks but never executes them. The parameter is a `std::size_t`, so negative arguments are converted to large unsigned values. The test using `-1` expects a `std::length_error` from reserving storage for threads, rather than explicit argument validation. Use a reasonable positive thread count.
 - Task exceptions are not caught. An exception escaping a task causes `std::terminate`; handle errors inside tasks.
 - The task queue is unbounded. There is no mechanism to limit task submission based on queue size.
 - The destructor waits without a timeout. If a task never finishes, destruction never completes either. Do not destroy the executor from one of its own tasks: the destructor would attempt to join the current thread.
