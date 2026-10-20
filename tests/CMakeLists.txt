@@ -14,6 +14,8 @@ if(WIN32)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 endif()
 
+# Test dependencies are not part of the Workloom installation.
+set(INSTALL_GTEST OFF)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(workloom_tests
@@ -28,3 +30,19 @@ target_link_libraries(workloom_tests PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(workloom_tests PROPERTIES TIMEOUT 15)
+
+add_test(NAME workloom.install_package
+        COMMAND ${CMAKE_COMMAND}
+        "-DWORKLOOM_BUILD_DIR=${PROJECT_BINARY_DIR}"
+        "-DWORKLOOM_CONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/package"
+        "-DWORKLOOM_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/install-package"
+        "-DWORKLOOM_CONFIG=$<CONFIG>"
+        "-DWORKLOOM_VERSION=${PROJECT_VERSION}"
+        "-DWORKLOOM_GENERATOR=${CMAKE_GENERATOR}"
+        "-DWORKLOOM_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+        "-DWORKLOOM_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+        "-DWORKLOOM_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+        "-DWORKLOOM_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/package/install_package.cmake"
+)
+set_tests_properties(workloom.install_package PROPERTIES TIMEOUT 120)

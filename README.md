@@ -41,6 +41,41 @@ Use `-DWORKLOOM_ENABLE_SANITIZERS=OFF` to disable Debug sanitizers or `-DWORKLOO
 
 For multi-configuration generators, select the configuration at build and test time with `cmake --build build --config Debug` and `ctest --test-dir build -C Debug --output-on-failure`.
 
+## Installing and using find_package
+
+Build and install the library, public headers, and CMake package:
+
+```sh
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+cmake --build build-release
+cmake --install build-release --prefix "$HOME/.local"
+```
+
+The install prefix can be any writable directory. Standard CMake install variables such as `CMAKE_INSTALL_LIBDIR` and `CMAKE_INSTALL_INCLUDEDIR` are supported. For multi-configuration generators, add `--config Release` to both the build and install commands. GoogleTest is not installed with Workloom.
+
+In a separate project's `CMakeLists.txt`:
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(example LANGUAGES CXX)
+
+find_package(workloom 0.1 CONFIG REQUIRED)
+
+add_executable(example main.cpp)
+target_link_libraries(example PRIVATE workloom::workloom)
+```
+
+Configure and build that project with the installation prefix and a compatible C++23 compiler:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/.local"
+cmake --build build
+```
+
+`workloom::workloom` supplies its headers, C++23 requirement, and thread dependency. The package is versioned as `0.1.0`, accepts compatible version requests within the same minor version, and can be moved to another prefix. Its config and target files are installed under `<libdir>/cmake/workloom`, following [CMake's package export conventions](https://cmake.org/cmake/help/latest/guide/importing-exporting/index.html).
+
+Use matching build configurations when installing and consuming the library. Debug installs use `libworkloomd.a` (or `workloomd.lib` on MSVC), allowing Debug and Release archives to coexist in one prefix. Debug sanitizer requirements are exported along with the target; use `-DWORKLOOM_ENABLE_SANITIZERS=OFF` when building an uninstrumented Debug package.
+
 ## Usage
 
 ```cpp
@@ -75,11 +110,10 @@ set(BUILD_TESTING OFF CACHE BOOL "Build tests")
 add_subdirectory(external/workloom)
 
 add_executable(example main.cpp)
-target_compile_features(example PRIVATE cxx_std_23)
-target_link_libraries(example PRIVATE workloom)
+target_link_libraries(example PRIVATE workloom::workloom)
 ```
 
-The `workloom` target exposes its include directory and C++23 requirement. Installation through `cmake --install` and a package for `find_package` are not provided yet.
+The same `workloom::workloom` target is available through `add_subdirectory()` and `find_package()`.
 
 ## Waiting, errors, and queue limits
 
@@ -103,6 +137,8 @@ src/executor.cpp              — task queue, worker loop, and shutdown
 tests/executor_test.cpp       — executor lifecycle and task submission tests
 CMakeLists.txt                — static library target and test setup
 tests/CMakeLists.txt          — GoogleTest download and test registration
+cmake/workloomConfig.cmake.in — installed find_package configuration
+tests/package/               — install, relocation, and consumer verification
 ```
 
-Tests cover reusable and timed waits, exception capture, bounded queues, concurrent submission, move-only tasks, and destruction from a worker.
+Tests cover reusable and timed waits, exception capture, bounded queues, concurrent submission, move-only tasks, and destruction from a worker. The package test installs to a temporary prefix, relocates it, and builds and runs a separate consumer using only the installed package.

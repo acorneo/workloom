@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(workloom LANGUAGES CXX)
+project(workloom VERSION 0.1.0 LANGUAGES CXX)
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+find_package(Threads REQUIRED)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -40,7 +44,10 @@ endif()
 add_library(workloom STATIC
         src/executor.cpp
 )
+add_library(workloom::workloom ALIAS workloom)
+set_target_properties(workloom PROPERTIES DEBUG_POSTFIX d)
 target_compile_features(workloom PUBLIC cxx_std_23)
+target_link_libraries(workloom PUBLIC Threads::Threads)
 workloom_configure_target(workloom)
 
 if(WORKLOOM_ENABLE_SANITIZERS)
@@ -70,7 +77,35 @@ if(WORKLOOM_ENABLE_SANITIZERS)
 endif()
 
 target_include_directories(workloom PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+set(workloom_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/workloom")
+configure_package_config_file(
+        cmake/workloomConfig.cmake.in
+        "${CMAKE_CURRENT_BINARY_DIR}/workloomConfig.cmake"
+        INSTALL_DESTINATION "${workloom_INSTALL_CMAKEDIR}"
+)
+write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/workloomConfigVersion.cmake"
+        VERSION "${PROJECT_VERSION}"
+        COMPATIBILITY SameMinorVersion
+)
+
+install(TARGETS workloom EXPORT workloomTargets
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+)
+install(DIRECTORY include/workloom DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(EXPORT workloomTargets
+        FILE workloomTargets.cmake
+        NAMESPACE workloom::
+        DESTINATION "${workloom_INSTALL_CMAKEDIR}"
+)
+install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/workloomConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/workloomConfigVersion.cmake"
+        DESTINATION "${workloom_INSTALL_CMAKEDIR}"
 )
 
 include(CTest)
