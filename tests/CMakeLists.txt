@@ -19,6 +19,7 @@ FetchContent_MakeAvailable(googletest)
 add_executable(workloom_tests
         executor_test.cpp
 )
+workloom_configure_target(workloom_tests)
 
 target_link_libraries(workloom_tests PRIVATE
         workloom
@@ -26,4 +27,4 @@ target_link_libraries(workloom_tests PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(workloom_tests)
+gtest_discover_tests(workloom_tests PROPERTIES TIMEOUT 15)

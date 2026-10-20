@@ -21,25 +21,30 @@ Timed scheduling, priorities, cancellation, futures, and an API for retrieving r
 Build the library without test dependencies:
 
 ```sh
-cmake -S . -B build -DBUILD_TESTING=OFF
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 cmake --build build
 ```
 
 Build and run tests (`BUILD_TESTING` is enabled by default):
 
 ```sh
-cmake -S . -B build-tests -DBUILD_TESTING=ON
+cmake -S . -B build-tests -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
 cmake --build build-tests
 ctest --test-dir build-tests --output-on-failure
 ```
 
-If needed, select a compiler during the initial configuration, for example with `-DCMAKE_CXX_COMPILER=g++-16`. The existing build was verified with GCC 16 on macOS; both tests pass.
+If needed, select a compiler during the initial configuration, for example with `-DCMAKE_CXX_COMPILER=g++-16`. The existing build was verified with GCC 16 on macOS; the test suite covers waiting, exceptions, queue limits, and worker-initiated destruction.
+
+GCC and Clang builds enable `-Wall -Wextra -Wpedantic -Wconversion -Wshadow`. Debug uses `-Og -g` and frame pointers, with AddressSanitizer and UndefinedBehaviorSanitizer enabled by default. Sanitizer failures stop execution. Release uses `-O3` and interprocedural optimization (IPO/LTO) when supported. MSVC builds use `/W4 /permissive-`, `/Od` in Debug, and `/O2` in Release; automatic sanitizer setup is currently available for GCC and Clang with the GNU command-line interface.
+
+Use `-DWORKLOOM_ENABLE_SANITIZERS=OFF` to disable Debug sanitizers or `-DWORKLOOM_ENABLE_IPO=OFF` to disable Release IPO. To check for data races, use a separate Debug build with `-DWORKLOOM_SANITIZERS=thread`; ThreadSanitizer cannot be combined with AddressSanitizer ([GCC sanitizer documentation](https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html)). Configuration checks that the selected sanitizers can compile and link. Sanitizer compile and runtime link flags propagate to targets that link `workloom`; warnings and optimization flags apply only to Workloom and its tests.
+
+For multi-configuration generators, select the configuration at build and test time with `cmake --build build --config Debug` and `ctest --test-dir build -C Debug --output-on-failure`.
 
 ## Usage
 
 ```cpp
 #include <atomic>
-#include <condition_variable>
 #include <iostream>
 #include <workloom/executor.hpp>
 
@@ -54,7 +59,8 @@ int main() {
                 ++counter;
             });
         }
-    } // The destructor waits for all tasks and worker threads to finish.
+        executor.wait_for_all(); // Workers remain available for more tasks.
+    } // The destructor joins the worker threads.
 
     std::cout << counter.load() << '\n'; // 100
 }
@@ -73,24 +79,30 @@ target_compile_features(example PRIVATE cxx_std_23)
 target_link_libraries(example PRIVATE workloom)
 ```
 
-The `workloom` target exposes its include directory. The consumer explicitly requests C++23 because the library's current CMake configuration does not propagate that requirement through `target_compile_features`. Installation through `cmake --install` and a package for `find_package` are not provided yet.
+The `workloom` target exposes its include directory and C++23 requirement. Installation through `cmake --install` and a package for `find_package` are not provided yet.
 
-## Current limitations
+## Waiting, errors, and queue limits
 
-- **`wait_for_all()` cannot be used to wait for tasks.** It calls `join()` without setting the stop flag. With a nonzero worker count, it blocks indefinitely: after draining the queue, workers keep waiting for new tasks. With the current API, let the executor go out of scope as shown above.
-- Task exceptions are not caught. An exception escaping a task causes `std::terminate`; handle errors inside tasks.
-- The task queue is unbounded. There is no mechanism to limit task submission based on queue size.
-- The destructor waits without a timeout. If a task never finishes, destruction never completes either. Do not destroy the executor from one of its own tasks: the destructor would attempt to join the current thread.
-- `executor.hpp` uses `std::condition_variable` without directly including `<condition_variable>`. The example includes that header first; portability of the library build itself depends on transitive standard library includes.
+`wait_for_all()` waits until the queue is empty and all running tasks (including their captures) have finished. It leaves the pool usable. `wait_for_all_for(std::chrono::seconds(1))` returns `false` on timeout and `true` when idle. Concurrent submissions can extend a wait; new tasks can arrive after it returns. Calling either wait from this executor's own tasks throws `std::logic_error` to avoid deadlock.
+
+Task exceptions are caught and workers continue. `take_exception()` returns and clears the first recorded `std::exception_ptr`; rethrow it with `std::rethrow_exception()` to inspect the error. Additional failures while an exception is stored are discarded. Neither waiting nor destruction rethrows task exceptions.
+
+Use `Executor executor(3, 100)` to limit the waiting queue to 100 tasks, excluding tasks already running. The default capacity of zero is unlimited. `try_enqueue()` returns `false` when full; `enqueue()` throws `std::overflow_error`. Both consume the supplied callable even on rejection, and neither blocks waiting for space. Empty tasks throw `std::invalid_argument`.
+
+## Shutdown constraints
+
+Normal destruction drains the queue and joins workers. C++ cannot safely forcibly stop an arbitrary task: if one never finishes, destruction still cannot finish. Use the timed wait to detect slow tasks before destruction, and arrange cooperative cancellation inside tasks when needed. A timed wait does not cancel tasks or impose a timeout on destruction.
+
+When a task destroys its own executor, workers are detached and continue draining independently using shared internal state. Destruction returns without waiting in this case. Any objects referenced by those tasks must remain alive until they finish; use an external completion signal to coordinate their lifetime. As with other C++ objects, calls on the executor must not race with its destruction.
 
 ## Repository layout
 
 ```text
 include/workloom/executor.hpp  — public Executor interface
 src/executor.cpp              — task queue, worker loop, and shutdown
-tests/executor_test.cpp       — constructor and 100-task execution tests
+tests/executor_test.cpp       — executor lifecycle and task submission tests
 CMakeLists.txt                — static library target and test setup
 tests/CMakeLists.txt          — GoogleTest download and test registration
 ```
 
-The task execution test verifies completion through the destructor. There are currently no dedicated tests for `wait_for_all()`, task exceptions, or concurrent task submission.
+Tests cover reusable and timed waits, exception capture, bounded queues, concurrent submission, move-only tasks, and destruction from a worker.
